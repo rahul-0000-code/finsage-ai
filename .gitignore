@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+finsage/
+env/
+venv/
+ENV/
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+*.pid
+
+# Test
+htmlcov/
+.coverage
+.cache
+.pytest_cache/
+
+# Data
+pgdata/
+miniodata/
+neo4jdata/
+/uploads/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Misc
+*.sqlite3
