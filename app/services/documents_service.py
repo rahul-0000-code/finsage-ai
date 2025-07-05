@@ -1,21 +1,33 @@
-from fastapi import UploadFile, Depends
+from fastapi import UploadFile, Depends, Request, HTTPException
 from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from jose import jwt, JWTError
+import os
 import uuid
 
 from app.models.document import Document
+from app.db.postgres import get_db
 
-# Dummy storage for illustration
-user_docs = {}
-
-async def get_current_user():
-    # TODO: Implement JWT auth extraction
-    return "demo_user@example.com"
+async def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid auth token")
+    token = auth_header.split(" ")[1]
+    SECRET_KEY = os.getenv("JWT_SECRET", "supersecret")
+    ALGORITHM = "HS256"
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        if not user_email:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        return user_email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 async def handle_upload(file: UploadFile, user_email: str, db: AsyncSession = Depends(get_db)):
-    # TODO: Save file to S3/Minio, run OCR, embed, store in Milvus/Neo4j
+    # storing metadata in Postgres 
     file_id = str(uuid.uuid4())
-    file_url = f"s3://bucket/{file_id}_{file.filename}"
+    file_url = f"/uploads/{file_id}_{file.filename}"
     doc = Document(user_email=user_email, filename=file.filename, file_url=file_url)
     db.add(doc)
     await db.commit()

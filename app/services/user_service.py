@@ -1,13 +1,27 @@
 from app.db.postgres import get_db
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from jose import jwt, JWTError
+import os
 
 from app.models.user import UserProfile
 
-async def get_current_user():
-    # TODO: Implement JWT auth extraction
-    return "demo_user@example.com"
+async def get_current_user(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid auth token")
+    token = auth_header.split(" ")[1]
+    SECRET_KEY = os.getenv("JWT_SECRET", "supersecret")
+    ALGORITHM = "HS256"
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_email = payload.get("sub")
+        if not user_email:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
+        return user_email
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")
 
 async def fetch_profile(user_email: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(UserProfile).where(UserProfile.email == user_email))
