@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy[asyncio]
+asyncpg
+python-jose[cryptography]
+passlib[bcrypt]
+sentence-transformers
+requests
+pymilvus
+neo4j
+psycopg2-binary
