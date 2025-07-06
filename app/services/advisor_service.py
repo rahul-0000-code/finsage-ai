@@ -10,6 +10,7 @@ from app.services.user_service import fetch_profile
 from app.services.logs_service import save_conversation_log
 from sentence_transformers import SentenceTransformer
 import requests
+import numpy as np
 
 # Dummy advisor logic for illustration
 async def get_current_user(request: Request):
@@ -29,20 +30,22 @@ async def get_current_user(request: Request):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # Load embedding model once (singleton)
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+embedding_model = SentenceTransformer("multi-qa-MiniLM-L6-cos-v1")
+
 GEMINI_API_URL = os.getenv("GEMINI_API_URL", "https://gemini.googleapis.com/v1/generate")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "dummy-key")
 
 async def answer_query(query, user_email, db: AsyncSession = Depends(get_db)):
-    # 1. Embed query using SentenceTransformer
-    query_embedding = embedding_model.encode(query.question).tolist()
+    # 1. Embed query using SentenceTransformer, normalized
+    query_embedding = embedding_model.encode(query.question, normalize_embeddings=True).tolist()
+    
     # 2. Search Milvus for similar docs
     try:
         collection = get_collection("user_docs")
         milvus_results = collection.search(
             data=[query_embedding],
             anns_field="embedding",
-            param={"metric_type": "L2", "params": {"nprobe": 10}},
+            param={"metric_type": "IP", "params": {"nprobe": 10}},  # IP ~ cosine
             limit=5,
             expr=f"user_email == '{user_email}'"
         )
@@ -53,15 +56,26 @@ async def answer_query(query, user_email, db: AsyncSession = Depends(get_db)):
     graph_context = []
     try:
         async with get_neo4j_session() as session:
-            cypher = "MATCH (n:TaxSection)-[:RELATED_TO]->(m) RETURN n.name as section, m.name as related LIMIT 5"
+            cypher = """
+            MATCH (n:TaxSection)-[:RELATED_TO]->(m)
+            RETURN n.name as section, m.name as related
+            LIMIT 5
+            """
             result = await session.run(cypher)
-            graph_context = [record["section"] + ": " + record["related"] for record in await result.to_list()]
+            graph_context = [
+                record["section"] + ": " + record["related"] for record in await result.to_list()
+            ]
     except Exception:
         graph_context = []
     # 4. Fetch user profile
     profile = await fetch_profile(user_email, db)
     # 5. Compose prompt for Gemini
-    prompt = f"Q: {query.question}\nDocs: {docs}\nGraph: {graph_context}\nProfile: {profile}"
+    prompt = f"""Q: {query.question}
+    Docs: {docs}
+    Graph: {graph_context}
+    Profile: {profile}
+    """
+    
     # 6. Call Gemini API (stub)
     try:
         response = requests.post(
